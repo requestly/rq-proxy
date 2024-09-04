@@ -1,6 +1,6 @@
 import { cloneDeep } from "lodash";
 import HTTPSnippet from "httpsnippet";
-import { get_success_actions_from_action_results } from "../rule_action_processor/utils";
+import { get_success_actions_from_action_results, getHost } from "../rule_action_processor/utils";
 import { createHar } from "../helpers/harObectCreator";
 const url = require("url");
 
@@ -21,6 +21,7 @@ class LoggerMiddleware {
         indent: " ",
       });
     } catch (err) {
+      // FIX-ME: this always fails on local
       console.error(`LoggerMiddleware.generate_curl_from_har Error: ${err}`);
     }
     return requestCurl;
@@ -79,7 +80,7 @@ class LoggerMiddleware {
         ctx.rq.final_request.headers,
         ctx.rq.final_request.method,
         protocol,
-        ctx.rq.final_request.host,
+        getHost(ctx),
         ctx.rq.final_request.path,
         ctx.rq.final_request.body,
         ctx.rq.final_response.status_code,
