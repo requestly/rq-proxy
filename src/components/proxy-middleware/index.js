@@ -9,8 +9,8 @@ import {
   getResponseHeaders,
   getResponseStatusCode,
   get_request_options,
-  get_request_url,
   get_response_options,
+  handleRQMetadataInQueryParam,
 } from "./helpers/proxy_ctx_helper";
 
 import RulesMiddleware from "./middlewares/rules_middleware";
@@ -126,6 +126,9 @@ class ProxyMiddlewareManager {
       ctx.rq = new CtxRQNamespace();
       ctx.rq.set_original_request(get_request_options(ctx));
       ctx.proxyToServerRequestOptions.rejectUnauthorized = false;
+
+      handleRQMetadataInQueryParam(ctx);
+
       // Figure out a way to enable/disable middleware dynamically
       // instead of re-initing this again
       const rules_middleware = new RulesMiddleware(
@@ -181,7 +184,6 @@ class ProxyMiddlewareManager {
         const contentType = getContentType(contentTypeHeader);
         const parsedBody = bodyParser(contentTypeHeader, body);
 
-        // Request body before any modifications
         let pre_final_body = parsedBody || body.toString("utf8");
         ctx.rq.set_original_request({ body: pre_final_body });
         ctx.rq_request_body = pre_final_body;

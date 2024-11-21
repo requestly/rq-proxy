@@ -1,5 +1,6 @@
 import { PROXY_HANDLER_TYPE } from "../../../../lib/proxy";
 import {
+  getExtraQueryParamsForRedirect,
   get_request_url,
   is_request_preflight,
 } from "../../helpers/proxy_ctx_helper";
@@ -28,7 +29,17 @@ const process_redirect_action = async (action, ctx) => {
   }
 
   const current_url = get_request_url(ctx);
-  const new_url = action.url;
+  let new_url = action.url;
+
+  // Sending back authorization header in query param for new location
+  const extraQueryParams = getExtraQueryParamsForRedirect(ctx);
+  if (extraQueryParams) {
+    const url = new URL(new_url);
+    for (const [key, value] of Object.entries(extraQueryParams)) {
+      url.searchParams.set(key, value);
+    }
+    new_url = url.toString();
+  }
 
   const request_url = current_url.replace(/www\./g, "");
 

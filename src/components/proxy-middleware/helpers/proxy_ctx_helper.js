@@ -2,6 +2,7 @@ import {
   CONSTANTS as GLOBAL_CONSTANTS,
 } from "@requestly/requestly-core"
 
+import qs from 'qs';
 
 function extractUrlComponent(url, name) { // need this in proxy
   const myUrl = new URL(url);
@@ -30,38 +31,14 @@ function extractUrlComponent(url, name) { // need this in proxy
  * @returns object { paramName -> [value1, value2] }
  */
 export function getQueryParamsMap(queryString) {
-  var map = {},
-    queryParams;
-
-  if (!queryString || queryString === "?") {
-    return map;
-  }
-
-  if (queryString[0] === "?") {
-    queryString = queryString.substr(1);
-  }
-
-  queryParams = queryString.split("&");
-
-  queryParams.forEach(function (queryParam) {
-    var paramName = queryParam.split("=")[0],
-      paramValue = queryParam.split("=")[1];
-
-    // We are keeping value of param as array so that in future we can support multiple param values of same name
-    // And we do not want to lose the params if url already contains multiple params of same name
-    map[paramName] = map[paramName] || [];
-    map[paramName].push(paramValue);
-  });
-
-  return map;
+  return qs.parse(queryString, { ignoreQueryPrefix: true });
 }
-
 
 export const get_request_url = (ctx) => {
   return (
     (ctx.isSSL ? "https://" : "http://") +
-    ctx.clientToProxyRequest.headers.host +
-    ctx.clientToProxyRequest.url
+    ctx.proxyToServerRequestOptions.headers.host || ctx.proxyToServerRequestOptions.host +
+    ctx.proxyToServerRequestOptions.url
   );
 };
 
@@ -143,3 +120,50 @@ export const getResponseStatusCode = (ctx) => {
     return ctx.serverToProxyResponse.statusCode;
   }
 };
+
+
+const HEADERS_IGNORED_ON_REDIRECT = ["authorization"];
+const CUSTOM_QUERY_PARAM_PREFIX = "x-rq-";
+
+export function getExtraQueryParamsForRedirect(ctx) {
+  const customQueryParams = {};
+  HEADERS_IGNORED_ON_REDIRECT.forEach((ignoredHeader) => {
+    if(ctx.rq.original_request.headers[ignoredHeader]) {
+      const customQueryParamKey = `${CUSTOM_QUERY_PARAM_PREFIX}${ignoredHeader}`;
+      customQueryParams[customQueryParamKey] = ctx.rq.original_request.headers[ignoredHeader];
+    }
+  })
+  return customQueryParams;
+}
+
+function extractDataFromRQQueryParams(ctx) {
+  const metaData = {};
+  const queryParams = get_json_query_params(ctx);
+  for (const param in queryParams) {
+    if (param.startsWith(CUSTOM_QUERY_PARAM_PREFIX)) {
+      const key = param.substring(CUSTOM_QUERY_PARAM_PREFIX.length);
+      metaData[key] = queryParams[param]
+      delete queryParams[param];
+    }
+  }
+  
+  const newUrl = new URL(get_request_url(ctx));
+  for (const [key, value] of Object.entries(queryParams)) {
+    newUrl.searchParams.set(key, value);
+  }
+
+  ctx.proxyToServerRequestOptions.path = newUrl.pathname;
+  ctx.proxyToServerRequestOptions.url = newUrl.toString();
+
+  ctx.rq.set_original_request({ path: newUrl.pathname, query_params: queryParams });
+}
+
+export function handleRQMetadataInQueryParam(ctx) {
+  const headersToBeAddedToRequest = extractDataFromRQQueryParams(ctx);
+  if (headersToBeAddedToRequest) {
+    for (const [name, value] in Object.entries(headersToBeAddedToRequest)) {
+      ctx.proxyToServerRequestOptions.headers[name] = value;
+    }
+  }
+  ctx.rq.set_original_request({ headers: ctx.proxyToServerRequestOptions.headers });
+}
